@@ -1,0 +1,240 @@
+#include "BluetoothSerial.h"
+#include <WiFi.h>
+
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
+
+#include <Arduino.h>
+#if defined(ESP32) || defined(ARDUINO_RASPBERRY_PI_PICO_W)
+#elif defined(ESP8266)
+#include <ESP8266WiFi.h>
+#endif
+
+#include <Firebase_ESP_Client.h>
+
+// Provide the token generation process info.
+#include <addons/TokenHelper.h>
+
+// Provide the RTDB payload printing info and other helper functions.
+#include <addons/RTDBHelper.h>
+
+
+// Link of Realtime Database in Firebase
+#define DATABASE_URL "https://smarthome-92669-default-rtdb.firebaseio.com/"
+
+// Create an account authenticated in Firebase and use it for authentication in this
+#define USER_EMAIL "tuananhnguyen@gmail.com"
+#define USER_PASSWORD "TuanAnhNguyen"
+
+// API key is gennerated in project setting after create Authentication in Firebase
+#define API_KEY "AIzaSyD0Mdjl19RiOp2QKd90d8-h436IhUQpDhg"
+
+// Setup GPIO Pin 23 and storage in Firebase
+String inputGPIO_Pin23 = "/esp32/GPIO23/input";
+String outputGPIO_Pin23 = "/esp32/GPIO23/output";
+int statusGPIO_23 = 0;
+const int GPIO_Pin23 = 23;
+
+// Setup GPIO Pin 22 and storage in Firebase
+String inputGPIO_Pin22 = "/esp32/GPIO22/input";
+String outputGPIO_Pin22 = "/esp32/GPIO22/output";
+int statusGPIO_22 = 0;
+const int GPIO_Pin22 = 22;
+
+// Setup GPIO Pin 21 and storage in Firebase
+String inputGPIO_Pin21 = "/esp32/GPIO21/input";
+String outputGPIO_Pin21 = "/esp32/GPIO21/output";
+int statusGPIO_21 = 0;
+const int GPIO_Pin21 = 21;
+
+// Define Firebase Data object
+FirebaseData fbdo;
+FirebaseAuth auth;
+FirebaseConfig config;
+
+String bufferReceive = "";
+BluetoothSerial SerialBT;
+
+bool isConnectedToWifi = false;
+
+#if defined(ARDUINO_RASPBERRY_PI_PICO_W)
+WiFiMulti multi;
+#endif
+
+void setup() {
+  pinMode(GPIO_Pin21, OUTPUT);
+  pinMode(GPIO_Pin22, OUTPUT);
+  pinMode(GPIO_Pin23, OUTPUT);
+  Serial.begin(115200);
+
+  WiFi.mode(WIFI_MODE_APSTA);
+  WiFi.disconnect();
+
+  SerialBT.begin("Hihihihihihi");
+}
+
+void loop() {
+  if (SerialBT.available()) {
+    Serial.println(F("Bluetooth established!"));
+    char c = SerialBT.read();
+    if (c == '\n') {
+      bufferReceive = "";
+    } 
+    else 
+    {
+      bufferReceive += c;
+    }
+    
+    // Type "SCAN" to list the wifi scan by ESP32
+    if (bufferReceive == "SCAN") {
+      Serial.println(F("Scanning wifi visible"));
+      SerialBT.print(F("=====================================\n"));
+      int n = WiFi.scanNetworks();
+      if (n > 0) {
+        for (int i = 0; i < n; i++) {
+          SerialBT.print(WiFi.SSID(i));
+          SerialBT.print('\n');
+          delay(0);
+        }
+      }
+      SerialBT.print(F("============Final scanning===========\n"));
+      bufferReceive = "";
+    }
+
+    // if you want to connect to wifi in list, typing "CONNECT:<ssid>:<password>."
+    if (bufferReceive == "CONNECT:") {
+      String parameter[2];
+      int i = 0;
+      while(1) {
+        if (SerialBT.available()) {
+          char c2 = SerialBT.read();
+          if (c2 == ':') {
+            i++;
+          } else if (c2 == '.') {
+            break;
+          } else {
+            parameter[i] += c2;
+          }
+        }
+        delay(0);
+      }
+      String ssid = parameter[0];
+      String password = parameter[1];
+      Serial.println(F("Connecting to wifi "));
+      Serial.println(ssid);
+
+      // Convert String to const char*
+      const char* wifi_ssid = ssid.c_str();
+      const char* wifi_password = password.c_str();
+
+      // // Make connection from ESP32 to wifi using BLE
+      // WiFi.begin(wifi_ssid, wifi_password);
+      // unsigned int ms = millis();
+      // while (WiFi.status() != WL_CONNECTED) {
+      //   delay(1000);
+      //   SerialBT.println(F("Connecting..."));
+      //   if ((millis() - ms) > 20000)
+      //   {
+      //     break;
+      //   }
+      // }
+
+      // // Check connection between ESP32 and Wifi
+      // if (WiFi.status() != WL_CONNECTED) // Un-successfull
+      // {
+      //   SerialBT.println(F("Connect FAILED! Please checking SSID and PASSWORD typed."));
+      //   Serial.println(F("Connection FAILED"));
+      // }
+      // else
+      // {
+
+      //   SerialBT.print(F(">>> CONNECTED, IP address: "));
+      //   SerialBT.println(WiFi.localIP());
+      //   Serial.println(F("Connection PASS"));
+
+      //   Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
+
+      //   /* Assign the api key (required) */
+      //   config.api_key = API_KEY;
+
+      //   /* Assign the user sign in credentials */
+      //   auth.user.email = USER_EMAIL;
+      //   auth.user.password = USER_PASSWORD;
+
+      //   /* Assign the RTDB URL (required) */
+      //   config.database_url = DATABASE_URL;
+
+      //   // The WiFi credentials are required for Pico W
+      //   // due to it does not have reconnect feature.
+      //   #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
+      //   config.wifi.clearAP();
+      //   config.wifi.addAP(wifi_ssid, wifi_password);
+      //   #endif
+
+      //   /* Assign the callback function for the long running token generation task */
+      //   config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+
+      //   Firebase.begin(&config, &auth);
+
+      //   Firebase.reconnectWiFi(true);
+        
+      //   #if defined(ESP8266)
+      //   fbdo.setBSSLBufferSize(512, 2048);
+      //   #endif
+      // }      
+#if defined(ARDUINO_RASPBERRY_PI_PICO_W)
+    multi.addAP(wifi_ssid, wifi_password);
+    multi.run();
+  #else
+    WiFi.begin(wifi_ssid, wifi_password);
+  #endif
+    Serial.print("Connecting to Wi-Fi");
+    unsigned long ms = millis();
+    while (WiFi.status() != WL_CONNECTED)
+    {
+      Serial.print(".");
+      delay(300);
+  #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
+      if (millis() - ms > 10000)
+        break;
+  #endif
+    }
+    Serial.println();
+    Serial.print("Connected with IP: ");
+    Serial.println(WiFi.localIP());
+    Serial.println();
+
+    Serial.printf("Firebase Client v%s\n\n", FIREBASE_CLIENT_VERSION);
+
+    /* Assign the api key (required) */
+    config.api_key = API_KEY;
+
+    /* Assign the user sign in credentials */
+    auth.user.email = USER_EMAIL;
+    auth.user.password = USER_PASSWORD;
+
+    /* Assign the RTDB URL (required) */
+    config.database_url = DATABASE_URL;
+
+    // The WiFi credentials are required for Pico W
+    // due to it does not have reconnect feature.
+  #if defined(ARDUINO_RASPBERRY_PI_PICO_W)
+    config.wifi.clearAP();
+    config.wifi.addAP(wifi_ssid, wifi_password);
+  #endif
+
+    /* Assign the callback function for the long running token generation task */
+    config.token_status_callback = tokenStatusCallback; // see addons/TokenHelper.h
+
+    Firebase.begin(&config, &auth);
+
+    Firebase.reconnectWiFi(true);
+  #if defined(ESP8266)
+    fbdo.setBSSLBufferSize(512, 2048);
+  #endif
+      bufferReceive = "";
+    }
+  }
+  delay(100);
+}
