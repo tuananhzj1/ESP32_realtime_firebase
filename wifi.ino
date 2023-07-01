@@ -18,7 +18,7 @@
 /* 1. Define the API Key */
 #define API_KEY "AIzaSyD0Mdjl19RiOp2QKd90d8-h436IhUQpDhg"
 
-/* 3. Define the RTDB URL */
+/* 2. Define the RTDB URL */
 #define DATABASE_URL "https://smarthome-92669-default-rtdb.firebaseio.com/" 
 
 /* 3. Define the user Email and password that alreadey registerd or added in
@@ -44,6 +44,14 @@ String outputGPIO_Pin21 = "/esp32/GPIO21/output";
 int statusGPIO_21 = 0;
 const int GPIO_Pin21 = 21;
 
+// GPIO Pin 13
+const int GPIO_Pin13 = 13;
+const int GPIO_Pin18 = 18;
+
+// Login or not
+String isLogin = "/esp32/Login";
+int statusLogin = 0;
+
 // Define Firebase Data object
 FirebaseData fbdo;
 FirebaseAuth auth;
@@ -55,9 +63,12 @@ String password = "";
 
 void setup()
 {
+  pinMode(GPIO_Pin13, OUTPUT); // status firebase connection
   pinMode(GPIO_Pin21, OUTPUT);
   pinMode(GPIO_Pin22, OUTPUT);
   pinMode(GPIO_Pin23, OUTPUT);
+  pinMode(GPIO_Pin18, OUTPUT);
+  digitalWrite(GPIO_Pin18, HIGH); // Power check
   Serial.begin(115200);
   SerialBT.begin("ESP32_BT");
   // Set the Bluetooth device name
@@ -68,39 +79,40 @@ void setup()
   }
 
   while (SerialBT.available() == 0) {
-      String input = SerialBT.readString();
-      input.trim(); // Remove leading/trailing whitespaces
-      
-      if (input.startsWith("SSID=")) {
-        ssid = input.substring(5); 
-        ssid.trim();
-        // Serial.println("Received SSID: " + ssid);
-        SerialBT.println(F("Recived SSID!"));
-      } else if (input.startsWith("PASSWORD=")) {
-        password = input.substring(9);
-        password.trim();
-        // Serial.println("Received password: " + password);
-        SerialBT.println(F("Recived password!"));
-      } else if (input.startsWith("SCAN")) {
-        Serial.println(F("Scanning wifi visible"));
-        SerialBT.print(F("=====================================\n"));
-        int n = WiFi.scanNetworks();
-        if (n > 0) {
-          for (int i = 0; i < n; i++) {
-            SerialBT.print(WiFi.SSID(i));
-            SerialBT.print('\n');
-            delay(0);
-          }
+    String input = SerialBT.readString();
+    input.trim(); // Remove leading/trailing whitespaces
+    
+    if (input.startsWith("SSID=")) {
+      ssid = input.substring(5); 
+      ssid.trim();
+      // Serial.println("Received SSID: " + ssid);
+      SerialBT.println(F("Recived SSID!"));
+    } else if (input.startsWith("PASSWORD=")) {
+      password = input.substring(9);
+      password.trim();
+      // Serial.println("Received password: " + password);
+      SerialBT.println(F("Recived password!"));
+    } else if (input.startsWith("SCAN")) {
+      Serial.println(F("Scanning wifi visible"));
+      SerialBT.print(F("=====================================\n"));
+      int n = WiFi.scanNetworks();
+      if (n > 0) {
+        for (int i = 0; i < n; i++) {
+          SerialBT.print(WiFi.SSID(i));
+          SerialBT.print('\n');
+          delay(0);
         }
-        SerialBT.print(F("============Final scanning===========\n"));
-      } else if (input.startsWith("CONNECT")) {
-        SerialBT.end(); // Must close bluetooth connection before moving next step
-        SerialBT.println(F("Connecting to wifi"));
-        break;
-      } else{
-        SerialBT.println("Rule: SSID=<ssid wifi input>; PASSWORD=<password wifi>; CONNECT");
       }
-  
+      SerialBT.print(F("============Final scanning===========\n"));
+    } else if (input.startsWith("CONNECT")) {
+      SerialBT.end(); // Must close bluetooth connection before moving next step
+      break;
+    } else if (input.startsWith("DEFAULT")) {
+      ssid = "TuanAnh";
+      password = "12345Abc@";
+      SerialBT.end(); // Must close bluetooth connection before moving next step
+      break;
+    }
   }
 
   // Convert string to const char* for input 
@@ -138,50 +150,56 @@ void setup()
 
 void loop()
 {
-  // GPIO Pin23
-  Firebase.RTDB.getInt(&fbdo, inputGPIO_Pin23, &statusGPIO_23);
-  if (statusGPIO_23 == 1)
-  {
-    digitalWrite(GPIO_Pin23, LOW);
-    Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin23, statusGPIO_23);
-    Serial.println("Light 23 ON");
-  }
-  else
-  {
-    digitalWrite(GPIO_Pin23, HIGH);
-    Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin23, statusGPIO_23);
-    Serial.println("Light 23 OFF");
-  }
+  // Check status login or not of user
+  Firebase.RTDB.getInt(&fbdo, isLogin, &statusLogin);
+  if (statusLogin) {
+    digitalWrite(GPIO_Pin13, HIGH); // connect successfull
+    digitalWrite(GPIO_Pin18, LOW); // power check 
+    // GPIO Pin23
+    Firebase.RTDB.getInt(&fbdo, inputGPIO_Pin23, &statusGPIO_23);
+    if (statusGPIO_23 == 1)
+    {
+      digitalWrite(GPIO_Pin23, LOW);
+      Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin23, statusGPIO_23);
+      Serial.println("Light 23 OFF");
+    }
+    else
+    {
+      digitalWrite(GPIO_Pin23, HIGH);
+      Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin23, statusGPIO_23);
+      Serial.println("Light 23 ON");
+    }
 
-  // GPIO Pin22
-  Firebase.RTDB.getInt(&fbdo, inputGPIO_Pin22, &statusGPIO_22);
-  if (statusGPIO_22 == 1)
-  {
-    digitalWrite(GPIO_Pin22, LOW);
-    Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin22, statusGPIO_22);
-    Serial.println("Light 22 ON");
-  }
-  else
-  {
-    digitalWrite(GPIO_Pin22, HIGH);
-    Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin22, statusGPIO_22);
-    Serial.println("Light 22 OFF");
-  }
+    // GPIO Pin22
+    Firebase.RTDB.getInt(&fbdo, inputGPIO_Pin22, &statusGPIO_22);
+    if (statusGPIO_22 == 1)
+    {
+      digitalWrite(GPIO_Pin22, LOW);
+      Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin22, statusGPIO_22);
+      Serial.println("Light 22 OFF");
+    }
+    else
+    {
+      digitalWrite(GPIO_Pin22, HIGH);
+      Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin22, statusGPIO_22);
+      Serial.println("Light 22 ON");
+    }
 
-  // GPIO Pin21
-  Firebase.RTDB.getInt(&fbdo, inputGPIO_Pin21, &statusGPIO_21);
-  if (statusGPIO_21 == 1)
-  {
-    digitalWrite(GPIO_Pin21, LOW);
-    Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin21, statusGPIO_21);
-    Serial.println("Light 21 ON");
+    // GPIO Pin21
+    Firebase.RTDB.getInt(&fbdo, inputGPIO_Pin21, &statusGPIO_21);
+    if (statusGPIO_21 == 1)
+    {
+      digitalWrite(GPIO_Pin21, LOW);
+      Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin21, statusGPIO_21);
+      Serial.println("Light 21 OFF");
+    }
+    else
+    {
+      digitalWrite(GPIO_Pin21, HIGH);
+      Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin21, statusGPIO_21);
+      Serial.println("Light 21 ON");
+    }
+    Serial.println("===================================================");
   }
-  else
-  {
-    digitalWrite(GPIO_Pin21, HIGH);
-    Firebase.RTDB.setIntAsync(&fbdo, outputGPIO_Pin21, statusGPIO_21);
-    Serial.println("Light 21 OFF");
-  }
-  Serial.println("===================================================");
-  delay(5000);
+  // delay(5000);
 }
